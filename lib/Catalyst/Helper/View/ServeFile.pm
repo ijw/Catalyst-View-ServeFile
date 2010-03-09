@@ -36,6 +36,7 @@ package [% class %];
 use strict;
 use warnings;
 
-use parent 'Catalyst::View::JavaScript::Minifier::XS';
+use Moose;
+extends 'Catalyst::View::ServeFile';
 
 1;
