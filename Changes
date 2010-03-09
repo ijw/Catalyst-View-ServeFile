@@ -1,36 +1,5 @@
 Revision history for {{$dist->name}}
 
 {{$NEXT}}
-         Add autodie so you get errors for js files that don't exist
-
-0.093180 Nov 14, 2009
-         Fix required version of Catalyst
-
-0.093030 Oct 30, 2009
-         Possibly breaking change: in the past you *always* had to have a
-         referrer, now you only need it if you are using subinclude and
-         are in the process of "subincluding"
-
-         Lots of tests for almost all features
-
-         Some pod cleanup and more accurate author sections
-
-0.092800 Oct 6, 2009
-         Add in build_requires that I forgot in the switch to dzil
-
-0.092790 Oct 6, 2009
-         Switch to dzil for autoversioning etc
-         Switch to Moose for config variables
-
-0.04     Sept 4, 2009
-         fix RT49034, RT48815, RT48814
-
-0.03	 23.02.2009/13:25
-	 [bugfix] when no files parsed print nothing
-
-0.02	 18.02.2009/13:00
-	 Added helper
-
-0.01     16.02.2009/10:13
-         First version, released on an unsuspecting world.
-
+         Initial version, based on frew's Catalyst::View::Javascript::Minifier::XS and its
+	 ancestor, Catalyst::View::CSS::Minifier::XS
