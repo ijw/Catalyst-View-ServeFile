@@ -1,4 +1,4 @@
-package Catalyst::View::JavaScript::Minifier::XS;
+package Catalyst::TraitFor::View::ServeFile::Minify::JS;
 
 # ABSTRACT: Minify your served JavaScript files
 
