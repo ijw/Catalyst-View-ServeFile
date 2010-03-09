@@ -47,7 +47,7 @@ around filter => sub {
     my ( $self, $c ) = @_;
 
     # loads root/js/script1.js and root/js/script2.js
-    $c->stash->{js} = [qw/script1 script2/];
+    $c->stash->{js} = ['script1.js', 'script2.js'];
 
     $c->forward('View::JSMini');
  }
@@ -74,6 +74,12 @@ sets a different stash variable from the default C<< $c->stash->{js} >>
 sets a different path for your javascript files
 
 default : js
+
+=item default_content_type
+
+sets a different content type for your javascript files
+
+default : text/javascript
 
 =back
 
