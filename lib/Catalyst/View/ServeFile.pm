@@ -13,20 +13,26 @@ use URI;
 has stash_variable => (
    is => 'ro',
    isa => 'Str',
-   default => 'js',
+   default => 'file',
 );
 
 has path => (
    is => 'ro',
    isa => 'Str',
-   default => 'js',
+   default => 'static',
 );
 
-has subinclude => (
-   is => 'ro',
-   isa => 'Bool',
-   default => undef,
+has default_content_type => (
+   is => 'ro'
+   isa => 'Str',
+   default => 'text/html',
 );
+
+sub find_content_type {
+    my $self = shift;
+#    my $file=shift;
+    return $self->default_content_type;
+}
 
 sub process {
    my ($self,$c) = @_;
@@ -34,59 +40,19 @@ sub process {
    my $original_stash = $c->stash->{$self->stash_variable};
    my @files = $self->_expand_stash($original_stash);
 
-   $c->res->content_type('text/javascript');
-
-   push @files, $self->_subinclude($c, $original_stash, @files);
+   $c->res->content_type($self->find_content_type(@files));
 
    my $home = $self->config->{INCLUDE_PATH} || $c->path_to('root');
    @files = map {
-      $_ =~ s/\.js$//;
-      Path::Class::File->new( $home, $self->path, "$_.js" );
+      Path::Class::File->new( $home, $self->path, $_ );
    } grep { defined $_ && $_ ne '' } @files;
 
-   my @output = $self->_combine_files($c, \@files);
+   my @output = $self->combine_files($c, \@files);
 
-   $c->res->body( $self->_minify($c, \@output) );
+   $c->res->body( $self->filter($c, \@output) );
 }
 
-sub _subinclude {
-   my ( $self, $c, $original_stash, @files ) = @_;
-
-   return unless $self->subinclude && $c->request->headers->referer;
-
-   unless ( $c->request->headers->referer ) {
-      $c->log->debug('javascripts called from no referer sending blank');
-      $c->res->body( q{ } );
-      $c->detach();
-   }
-
-   my $referer = URI->new($c->request->headers->referer);
-
-   if ( $referer->path eq '/' ) {
-      $c->log->debug(q{we can't take js from index as it's too likely to enter an infinite loop!});
-      return;
-   }
-
-   $c->forward('/'.$referer->path);
-   $c->log->debug('js taken from referer : '.$referer->path);
-
-   return $self->_expand_stash($c->stash->{$self->stash_variable})
-      if $c->stash->{$self->stash_variable} ne $original_stash;
-}
-
-sub _minify {
-   my ( $self, $c, $output ) = @_;
-
-   if ( @{$output} ) {
-      return $c->debug
-         ? join q{ }, @{$output}
-         : minify(join q{ }, @{$output} )
-   } else {
-      return q{ };
-   }
-}
-
-sub _combine_files {
+sub combine_files {
    my ( $self, $c, $files ) = @_;
 
    my @output;
@@ -100,6 +66,14 @@ sub _combine_files {
    }
    return @output;
 }
+
+# The default filter is a no-op, but you may want to override it.
+sub filter {
+    my ($self, $c, $content) = @_;
+
+    return $content;
+}
+
 
 sub _expand_stash {
    my ( $self, $stash_var ) = @_;
@@ -118,17 +92,17 @@ sub _expand_stash {
 
 =head1 SYNOPSIS
 
- # creating MyApp::View::JavaScript
- ./script/myapp_create.pl view JavaScript JavaScript::Minifier::XS
+ # creating MyApp::View::ServeFile
+ ./script/myapp_create.pl view ServeFile ServeFile
 
  # in your controller file, as an action
  sub js : Local {
     my ( $self, $c ) = @_;
 
-    # loads root/js/script1.js and root/js/script2.js
+    # loads root/js/script1.js and root/js/script2.js and concatenates them
     $c->stash->{js} = [qw/script1 script2/];
 
-    $c->forward('View::JavaScript');
+    $c->forward('View::ServeFile');
  }
 
  # in your html
@@ -136,9 +110,38 @@ sub _expand_stash {
 
 =head1 DESCRIPTION
 
-Use your minified js files as a separated catalyst request. By default they
-are read from C<< $c->stash->{js} >> as array or string.  Also note that this
-does not minify the javascript if the server is started in development mode.
+This is a rather dull view that simply fetches files from the filesystem and serves them.
+
+There are specific reasons why you would want to use this view:
+
+=over 4
+=item Minifying JS
+=item Minifying CSS
+=item Complex rewriting of URLS
+=item Serving either a static file or something else depending no what a controller decides
+=item Serving files from behind Catalyst's authentication wall
+=item Any other sort of multiple-file processing and filtering
+=back
+
+This plugin is also superficially tempting for other needs, but other, possibly more
+efficient, ways exist to serve static files.  Consider:
+
+=over 4
+=item If you're using Apache, you can set up a filter in Apache/mod_perl and avoid the overhead of
+Catalyst's dispatch mechanism.
+=item If you're using lighttpd or certain proxy arrangements, you can send a X-SendFile header
+to instruct the webserver to serve a file, rather than serving it yourself.
+=item With pretty much any webserver you should be able to set it to serve files straight off of
+disk for a given URL.
+=back
+
+What this module gives you is flexibility: you can transform the file before it's output,
+you can output more than one file, you can sort out your own caching policies and you can
+make complex decisions on what exactly you should be serving.
+
+WARNING: This assumes that the controller calling it has a modicum of intelligence.  Therefore,
+ensure that any file you ask to be served has a suitably untainted filename: this view will
+serve /etc/passwd without complaint if your controller tells it to.
 
 =head1 CONFIG VARIABLES
 
@@ -146,38 +149,60 @@ does not minify the javascript if the server is started in development mode.
 
 =item stash_variable
 
-sets a different stash variable from the default C<< $c->stash->{js} >>
+The file, or file list, that will be served.  The default behaviour is to concat
+multiple files in the order supplied.
+
+The default is C<< $c->stash->{file} >> .
 
 =item path
 
-sets a different path for your javascript files
+Sets a different path for your files; the path is relative
+to your Catalyst 'root' directory.
 
-default : js
+default : static
 
-=item subinclude
+=item default_content_type
 
-setting this to true will take your js files (stash variable) from your referer
-action
+The content type that will be given for served files.
 
- # in your controller
- sub action : Local {
-    my ( $self, $c ) = @_;
-
-    # load exclusive.js only when /action is loaded
-    $c->stash->{js} = "exclusive";
- }
-
-This could be very dangerous since it's using
-C<< $c->forward($c->request->headers->referer) >>. It doesn't work with the
-index action!
-
-default : false
+The default is 'text/html'.
 
 =back
 
+You may also wish to set 'traits' (which Catalyst understands) to extend this module.
+
 =cut
+
+=head1 METHODS FOR OVERRIDING
+
+=over 2
+
+=item find_content_type
+
+Supplied $c and a list of files; returns the content-type string to serve.
+
+Default is to serve default_content_type as above.
+
+=item combine_files
+
+Supplied $c and a list of files; returns the content string to serve.
+
+Default is to serve the files concatenated in the supplied order, and to
+throw an error if any don't exist.
+
+=item filter
+
+Supplied $c and the combined content.  You get a chance here to modify the content
+before handing it to be served; thus, an ideal place for minifiers.
+
+Default is to return the content unchanged.
 
 =head1 SEE ALSO
 
-L<JavaScript::Minifier::XS>
+L<Catalyst::TraitFor::View::ServeFile::Minify::JS>
+L<Catalyst::TraitFor::View::ServeFile::Minify::CSS>
 
+
+=head1 TODO
+
+In the near future I will add code to set cache headers.
